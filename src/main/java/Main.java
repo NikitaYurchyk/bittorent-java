@@ -2,6 +2,8 @@ import com.dampcake.bencode.Type;
 import com.google.gson.Gson;
 import com.dampcake.bencode.Bencode;
 
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -22,6 +24,20 @@ public class Main {
           return;
         }
         System.out.println(decoded);
+    }else if("info".equals(command)) {
+      String fileName = args[1];
+      try {
+        byte[] bytes = Files.readAllBytes(Paths.get(fileName));
+        Bencode bencode = new Bencode();
+        Map<String, Object> f = bencode.decode(bytes, Type.DICTIONARY);
+        Map<String, Object> info = (Map<String, Object>) f.get("info");
+        System.out.println(gson.toJson("Tracker URL: "+f.get("announce")));
+        System.out.println(gson.toJson("Length: "+ info.get("length")));
+      }catch (RuntimeException e) {
+        System.err.println(e.getMessage());
+      }
+
+
     } else {
       System.out.println("Unknown command: " + command);
     }
