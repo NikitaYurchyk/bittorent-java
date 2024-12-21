@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -74,6 +75,20 @@ public class Main {
     }
     return res;
   }
+  private static void printPieces(byte[] pieces, int lenPieces){
+    for(int i = 0; i < pieces.length/20; i++){
+      int numIterations = i * 20;
+      byte[] tmpBytes = new byte[20];
+      int index = 0;
+      for(int j = numIterations; j < numIterations + 20; j++){
+        tmpBytes[index] = pieces[j];
+        index++;
+      }
+      String hex = HexFormat.of().formatHex(tmpBytes);
+      System.out.println(gson.toJson(hex));
+    }
+    return;
+  }
 
   public static void main(String[] args) throws Exception {
     
@@ -105,6 +120,19 @@ public class Main {
         System.out.println(gson.toJson("Tracker URL: "+ trackerURL));
         System.out.println(gson.toJson("Length: "+ info.get("length")));
         System.out.println("Info Hash: "+ strToSHA1(bencode.encode(info)));
+        System.out.println("Piece Hashes: ");
+        var pieces = info.get("pieces");
+        Object rawLen = info.get("piece length");
+        int lenPieces = 0;
+        if(rawLen instanceof Long){
+          lenPieces = ((Long) rawLen).intValue();
+        }
+        byte[] piecesInByte = ((ByteBuffer) pieces).array();
+        System.out.println("Piece Length: " + lenPieces);
+        System.out.println("Piece Hashes: ");
+        printPieces(piecesInByte, lenPieces);
+
+
 
       }catch (RuntimeException e) {
         System.err.println(e.getMessage());
