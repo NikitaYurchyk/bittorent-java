@@ -3,16 +3,18 @@ import com.google.gson.Gson;
 import com.dampcake.bencode.Bencode;
 
 import java.io.ByteArrayOutputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 public class Main {
   private static final Gson gson = new Gson();
@@ -47,34 +49,6 @@ public class Main {
   }
 
 
-  private static byte[] getInfoBytes(byte[] bytes){
-    byte[] pattern = "4:info".getBytes(StandardCharsets.UTF_8);
-    int index = -1;
-    for(int i = 0; i < bytes.length; i++){
-      if(pattern[0] == bytes[i] && bytes.length - i + 1 >= pattern.length){
-        Boolean isMatch = true;
-        for(int j = i; j < pattern.length; j++){
-          if(pattern[j] != bytes[i + j]){
-            isMatch = false;
-            break;
-          }
-        }
-        index = isMatch ? i + pattern.length: -1;
-        if(index > -1){
-          break;
-        }
-      }
-    }
-
-    byte[] res = new byte[bytes.length - index];
-    int ind = 0;
-    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-    for(int i = index; i < bytes.length; i++){
-      res[ind] = bytes[i];
-      ind++;
-    }
-    return res;
-  }
   private static void printPieces(byte[] pieces, int lenPieces){
     for(int i = 0; i < pieces.length/20; i++){
       int numIterations = i * 20;
@@ -89,9 +63,27 @@ public class Main {
     }
     return;
   }
+  public static void printPeers(ByteBuffer peers){
+    ArrayList<String> res = new ArrayList<>();
+    Integer u = 0xFF;
+    for(int i = 0; i < peers.limit(); i += 6){
+      Integer p1 = peers.get(i) & u;
+      Integer p2 = peers.get(i + 1) & u;
+      Integer p3 = peers.get(i + 2) & u;
+      Integer p4 = peers.get(i + 3) & u;
+
+      ByteBuffer slice = ByteBuffer.wrap(new byte[]{peers.get(i + 4), peers.get(i + 5)});
+      int r = slice.order(ByteOrder.BIG_ENDIAN).getShort() & 0xFFFF;
+      String s = p1.toString() + '.' + p2.toString() + '.' + p3.toString() + '.' + p4.toString() + ":" + r;
+      res.add(s);
+    }
+    for (var i : res){
+      System.out.println(gson.toJson(i));
+    }
+
+  }
 
   public static void main(String[] args) throws Exception {
-    
     String command = args[0];
     if("decode".equals(command)) {
         String bencodedValue = args[1];
@@ -139,7 +131,56 @@ public class Main {
       }
 
 
-    } else {
+    }else if("peers".equals(command)) {
+      String fileName = args[1];
+      try {
+        byte[] bytes = Files.readAllBytes(Paths.get(fileName));
+        Bencode bencode = new Bencode(true);
+        Map<String, Object> f = bencode.decode(bytes, Type.DICTIONARY);
+        Object announceObject = f.get("announce");
+
+        byte[] announceBytes = ((ByteBuffer) announceObject).array();
+
+        var trackerURL = new String(announceBytes, StandardCharsets.UTF_8);
+
+        TrackerRequest r = new TrackerRequest();
+
+        Map<String, Object> info = (Map<String, Object>) f.get("info");
+
+        r.infoHash = strToSHA1(bencode.encode(info));
+        r.left = info.get("length").toString();
+
+        String infoHashWithPrecents = r.percentsEncoding();
+        String encoded_info_hash = r.transformCharsIntoStrToHex(infoHashWithPrecents);
+        String info_hash = "?info_hash=" + encoded_info_hash;
+        String peer_id = "&peer_id=" + r.peerId;
+        String port = "&port=" + r.port;
+        String uploaded = "&uploaded=" + r.uploaded;
+        String downloaded = "&downloaded=" + r.downloaded;
+        String left = "&left=" + r.left;
+        String compact = "&compact=" + r.compact;
+
+        String url = trackerURL + info_hash + peer_id + port + uploaded + downloaded + left + compact;
+
+        HttpClient httpClient = HttpClient.newHttpClient();
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .GET()
+                .build();
+
+        HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        Bencode b = new Bencode(true);
+
+        var check = b.decode(response.body(), Type.DICTIONARY);
+        printPeers((ByteBuffer) check.get("peers"));
+
+      }catch (RuntimeException e){
+        System.err.println(e.getMessage());
+      }
+
+    }
+      else {
       System.out.println("Unknown command: " + command);
     }
 
@@ -158,6 +199,7 @@ public class Main {
       int length = Integer.parseInt(bencodedString.substring(0, firstColonIndex));
       return gson.toJson(bencodedString.substring(firstColonIndex+1, firstColonIndex+1+length));
     }
+
     if (Character.isLetter(bencodedString.charAt(0))){
       if(bencodedString.charAt(0) == 'i') {
         Bencode bencode = new Bencode();
