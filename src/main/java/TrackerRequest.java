@@ -21,11 +21,18 @@ public class TrackerRequest {
         for (int i = 0; i < str.length(); i += 3) {
             if (i + 3 > str.length()) break;
             String tmp = str.substring(i, i + 3);
-            if (tmp.length() != 3 || tmp.charAt(0) != '%') {
+            if (tmp.charAt(0) != '%') {
                 break;
             }
             char hexValue = (char) Integer.parseInt(tmp.substring(1), 16);
-            if (hexValue == '-' || hexValue == '_' || hexValue == '.' || hexValue == '~' || (hexValue >= 65 && hexValue <= 90) || (hexValue >= 97 && hexValue <= 122)) {
+            if (
+                    hexValue == '-'
+                    || hexValue == '_'
+                    || hexValue == '.'
+                    || hexValue == '~'
+                    || (hexValue >= 65 && hexValue <= 90)
+                    || (hexValue >= 97 && hexValue <= 122)
+            ) {
                 res.append(hexValue);
             } else {
                 res.append(tmp);
