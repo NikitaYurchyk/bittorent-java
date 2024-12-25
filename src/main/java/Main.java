@@ -3,6 +3,9 @@ import com.google.gson.Gson;
 import com.dampcake.bencode.Bencode;
 
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -48,6 +51,23 @@ public class Main {
     }
   }
 
+  private static byte[] sha1InArrayOfBytes(byte[] info){
+    try {
+      MessageDigest md = MessageDigest.getInstance("SHA-1");
+      byte[] hashBytes = md.digest(info);
+      return hashBytes;
+    }catch (NoSuchAlgorithmException e){
+      throw new RuntimeException("SHA-1 Algorithm not found", e);
+    }
+  }
+  public static String byteToHex(byte[] arr){
+    StringBuilder res = new StringBuilder();
+    for (byte b : arr) {
+      res.append(String.format("%02x", b));
+    }
+    return res.toString();
+
+  }
 
   private static void printPieces(byte[] pieces, int lenPieces){
     for(int i = 0; i < pieces.length/20; i++){
@@ -178,6 +198,60 @@ public class Main {
       }catch (RuntimeException e){
         System.err.println(e.getMessage());
       }
+
+    }else if("handshake".equals(command)){
+      String fileName = args[1];
+      try {
+
+        byte[] bytes = Files.readAllBytes(Paths.get(fileName));
+        Bencode bencode = new Bencode(true);
+        Map<String, Object> f = bencode.decode(bytes, Type.DICTIONARY);
+        Map<String, Object> info = (Map<String, Object>) f.get("info");
+        var infoHash = sha1InArrayOfBytes(bencode.encode(info));
+        byte[] randomId = new byte[20];
+        Random random = new Random();
+        random.nextBytes(randomId);
+
+        byte lenOfProtocol = 19;
+        Integer numBytes = 1 + 19 + 8 + 20 + 20;
+        var indexOfDots = args[2].indexOf(':');
+        var ip = args[2].substring(0, indexOfDots);
+        String rawPort = args[2].substring(indexOfDots + 1, args[2].length());
+        var actualPort = Integer.parseInt(rawPort);
+
+
+
+
+
+        ByteBuffer handshake = ByteBuffer.allocate(numBytes);
+        handshake.put(lenOfProtocol);
+        handshake.put("BitTorrent protocol".getBytes(StandardCharsets.UTF_8));
+        handshake.put(new byte[8]);
+        handshake.put(infoHash);
+        handshake.put(randomId);
+        Socket socket = new Socket(ip, actualPort);
+        OutputStream out = socket.getOutputStream();
+        InputStream in = socket.getInputStream();
+        out.write(handshake.array());
+        out.flush();
+
+        byte[] resp = new byte[1024];
+        int nBytes = in.read(resp);
+        if(nBytes != -1){
+          byte[] readBytes = Arrays.copyOf(resp, nBytes);
+          byte[] tmp = Arrays.copyOfRange(readBytes, 1 + 19 + 8 + 20, 68);
+          var peerId = HexFormat.of().formatHex(tmp);
+          System.out.println("Peer ID: " + peerId);
+        }
+
+        socket.close();
+
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+
+
+
 
     }
       else {
